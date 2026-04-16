@@ -175,6 +175,8 @@ function downloadSubs(
       "en,en-US,en-GB",
       "--sub-format",
       "vtt",
+      "--js-runtimes",
+      "bun",
       "-o",
       join(tempDir, "output"),
       safeUrl,
