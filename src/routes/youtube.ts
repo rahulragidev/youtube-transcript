@@ -56,9 +56,9 @@ function checkYtDlp(binPath: string): Promise<void> {
       if (!resolved) {
         resolved = true;
         proc.kill("SIGKILL");
-        reject(new Error("yt-dlp availability check timed out (5 s)"));
+        reject(new Error("yt-dlp availability check timed out (15 s)"));
       }
-    }, 5_000);
+    }, 15_000);
 
     proc.on("close", (code) => {
       if (resolved) return;
