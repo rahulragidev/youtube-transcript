@@ -2,20 +2,22 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-COPY package.json tsconfig.json ./
+COPY package.json package-lock.json tsconfig.json ./
 COPY src/ src/
 
-RUN npm install && npm run build
+RUN npm ci && npm run build
 
 FROM node:20-alpine
 
-RUN apk add --no-cache python3 py3-pip \
-    && pip3 install --break-system-packages yt-dlp
-
 WORKDIR /app
 
-COPY package.json ./
-RUN npm install --omit=dev
+# Download latest yt-dlp binary directly (no Python needed)
+RUN apk add --no-cache curl \
+    && curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux -o /usr/local/bin/yt-dlp \
+    && chmod +x /usr/local/bin/yt-dlp
+
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev
 
 COPY --from=builder /app/dist ./dist
 
