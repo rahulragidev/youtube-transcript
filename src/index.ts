@@ -46,7 +46,7 @@ app.doc("/openapi.json", {
 	info: { title: "YouTube Transcript API", version: "1.0.0" },
 });
 
-const server = Bun.serve({ fetch: app.fetch, port: PORT, hostname: "0.0.0.0" });
+const server = Bun.serve({ fetch: app.fetch, port: PORT, hostname: "0.0.0.0", idleTimeout: 120 });
 console.log(`YouTube Transcript API running on port ${server.port}`);
 
 process.on("SIGTERM", () => {
