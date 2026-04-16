@@ -1,57 +1,50 @@
-import { Hono } from "hono";
+import { OpenAPIHono } from "@hono/zod-openapi";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
-import { extractVideoId, fetchTranscript } from "./transcript.js";
+import youtubeRoutes from "./routes/youtube.js";
 
 const API_KEY = process.env.YOUTUBE_TRANSCRIPT_API_KEY;
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN ?? "*";
 const PORT = Number(process.env.PORT) || 3004;
 
-const app = new Hono()
-	.use(logger())
-	.get("/health", (c) => c.text("OK"));
+const app = new OpenAPIHono();
 
-const api = new Hono()
-	.use(
-		cors({
-			origin: ALLOWED_ORIGIN,
-			allowMethods: ["GET", "OPTIONS"],
-			allowHeaders: ["Authorization"],
-			exposeHeaders: ["Content-Length"],
-			maxAge: 600,
-		}),
-	)
-	.use(async (c, next) => {
-		if (!API_KEY) return next();
+app.use(logger());
 
-		const auth = c.req.header("Authorization");
-		if (auth !== `Bearer ${API_KEY}`) {
-			return c.json({ error: "Unauthorized" }, 401);
-		}
-		return next();
-	})
-	.get("/transcript", async (c) => {
-		const url = c.req.query("url");
+app.get("/health", (c) => c.text("OK"));
 
-		if (!url) {
-			return c.json({ error: "Missing 'url' query parameter." }, 400);
-		}
+// --- Auth + CORS for API routes ---
+const api = new OpenAPIHono();
 
-		const videoId = extractVideoId(url);
-		if (!videoId) {
-			return c.json({ error: "Invalid YouTube URL." }, 400);
-		}
+api.use(
+	cors({
+		origin: ALLOWED_ORIGIN,
+		allowMethods: ["GET", "OPTIONS"],
+		allowHeaders: ["Authorization"],
+		exposeHeaders: ["Content-Length"],
+		maxAge: 600,
+	}),
+);
 
-		try {
-			const transcript = await fetchTranscript(url);
-			return c.json({ transcript });
-		} catch (error) {
-			const message = error instanceof Error ? error.message : "Unknown error";
-			return c.json({ error: message }, 422);
-		}
-	});
+api.use(async (c, next) => {
+	if (!API_KEY) return next();
 
-app.route("/api", api);
+	const auth = c.req.header("Authorization");
+	if (auth !== `Bearer ${API_KEY}`) {
+		return c.json({ error: "Unauthorized" }, 401);
+	}
+	return next();
+});
+
+api.route("/youtube", youtubeRoutes);
+
+app.route("/api/v1", api);
+
+// --- OpenAPI docs ---
+app.doc("/openapi.json", {
+	openapi: "3.1.0",
+	info: { title: "YouTube Transcript API", version: "1.0.0" },
+});
 
 const server = Bun.serve({ fetch: app.fetch, port: PORT, hostname: "0.0.0.0" });
 console.log(`YouTube Transcript API running on port ${server.port}`);
