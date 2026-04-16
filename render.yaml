@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: youtube-transcript
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: ./
+    healthCheckPath: /health
+    plan: starter
+    envVars:
+      - key: YOUTUBE_TRANSCRIPT_API_KEY
+        generateValue: true
+      - key: ALLOWED_ORIGIN
+        value: ""
