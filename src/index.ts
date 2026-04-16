@@ -1,4 +1,3 @@
-import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
@@ -54,11 +53,10 @@ const api = new Hono()
 
 app.route("/api", api);
 
-const server = serve({ fetch: app.fetch, port: PORT, hostname: "0.0.0.0" }, () => {
-	console.log(`YouTube Transcript API running on port ${PORT}`);
-});
+const server = Bun.serve({ fetch: app.fetch, port: PORT, hostname: "0.0.0.0" });
+console.log(`YouTube Transcript API running on port ${server.port}`);
 
 process.on("SIGTERM", () => {
-	server.close();
+	server.stop();
 	process.exit(0);
 });

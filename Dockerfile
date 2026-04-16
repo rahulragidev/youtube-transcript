@@ -1,26 +1,29 @@
-FROM node:20-alpine AS builder
+FROM oven/bun:1-debian AS builder
 
 WORKDIR /app
 
-COPY package.json package-lock.json tsconfig.json ./
+COPY package.json bun.lock ./
+RUN bun install --frozen-lockfile
+
 COPY src/ src/
 
-RUN npm ci && npm run build
+# Bun runs TypeScript directly — no build step needed
 
-FROM node:20-alpine
+FROM oven/bun:1-debian
 
 WORKDIR /app
 
-# Download latest yt-dlp binary directly (no Python needed)
-RUN apk add --no-cache curl \
+# Download latest yt-dlp binary (Debian/glibc — no Python needed)
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
     && curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux -o /usr/local/bin/yt-dlp \
-    && chmod +x /usr/local/bin/yt-dlp
+    && chmod +x /usr/local/bin/yt-dlp \
+    && apt-get purge -y curl && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
 
-COPY package.json package-lock.json ./
-RUN npm ci --omit=dev
+COPY package.json bun.lock ./
+RUN bun install --frozen-lockfile --production
 
-COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/src ./src
 
 EXPOSE 3004
 
-CMD ["node", "dist/index.js"]
+CMD ["bun", "run", "src/index.ts"]
