@@ -1,9 +1,9 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { spawn } from "node:child_process";
-import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, writeFile, access } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { access } from "node:fs/promises";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -43,7 +43,36 @@ async function resolveYtDlp(): Promise<string> {
 }
 
 // ---------------------------------------------------------------------------
-// yt-dlp availability check (5 s timeout)
+// Cookie file resolution (cached)
+// Supports: ./cookies.txt file OR YT_COOKIES_BASE64 env var
+// ---------------------------------------------------------------------------
+
+const COOKIE_FILE_PATH = resolve(process.cwd(), "cookies.txt");
+let cachedCookiePath: string | null | undefined = undefined;
+
+async function resolveCookies(): Promise<string | null> {
+  if (cachedCookiePath !== undefined) return cachedCookiePath;
+
+  if (existsSync(COOKIE_FILE_PATH)) {
+    cachedCookiePath = COOKIE_FILE_PATH;
+    return cachedCookiePath;
+  }
+
+  const b64 = process.env.YT_COOKIES_BASE64;
+  if (b64) {
+    const decoded = Buffer.from(b64, "base64").toString("utf-8");
+    const tmpCookies = join(tmpdir(), "yt-cookies.txt");
+    await writeFile(tmpCookies, decoded, "utf-8");
+    cachedCookiePath = tmpCookies;
+    return cachedCookiePath;
+  }
+
+  cachedCookiePath = null;
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// yt-dlp availability check (15 s timeout)
 // ---------------------------------------------------------------------------
 
 function checkYtDlp(binPath: string): Promise<void> {
@@ -163,11 +192,12 @@ function downloadSubs(
   binPath: string,
   safeUrl: string,
   tempDir: string,
+  cookiePath: string | null,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     let resolved = false;
 
-    const proc = spawn(binPath, [
+    const args = [
       "--skip-download",
       "--write-auto-sub",
       "--write-sub",
@@ -179,8 +209,15 @@ function downloadSubs(
       "bun",
       "-o",
       join(tempDir, "output"),
-      safeUrl,
-    ]);
+    ];
+
+    if (cookiePath) {
+      args.push("--cookies", cookiePath);
+    }
+
+    args.push(safeUrl);
+
+    const proc = spawn(binPath, args);
 
     const timeout = setTimeout(() => {
       if (!resolved) {
@@ -308,6 +345,9 @@ youtubeRoutes.openapi(transcriptRoute, async (c) => {
     return c.json({ error: msg }, 503);
   }
 
+  // --- Resolve cookies ---
+  const cookiePath = await resolveCookies();
+
   // --- Safe URL construction (NEVER pass raw user URL) ---
   const safeUrl = `https://www.youtube.com/watch?v=${videoId}`;
 
@@ -315,7 +355,7 @@ youtubeRoutes.openapi(transcriptRoute, async (c) => {
   const tempDir = await mkdtemp(join(tmpdir(), "yt-transcript-"));
 
   try {
-    await downloadSubs(binPath, safeUrl, tempDir);
+    await downloadSubs(binPath, safeUrl, tempDir, cookiePath);
 
     const files = await readdir(tempDir);
     const vttFile = files.find((f) => f.endsWith(".vtt"));
